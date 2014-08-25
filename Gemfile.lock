@@ -51,7 +51,7 @@ GEM
       rspec-support (~> 3.0.0)
     rspec-support (3.0.4)
     safe_yaml (1.0.3)
-    sidejob (0.3.1)
+    sidejob (0.3.2)
       sidekiq (~> 3.2.0)
     sidekiq (3.2.2)
       celluloid (>= 0.15.2)

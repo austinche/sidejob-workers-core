@@ -10,23 +10,10 @@ module Workers
 
     # Loads graph from elasticsearch and runs a graph
     # @param workflow_id [String] Workflow ID of graph to run
-    def perform(workflow_id)
-      graph = get_json(:graph)
+    # @param graph [String] noflo graph in JSON format https://github.com/noflo/noflo/blob/master/graph-schema.json
+    def perform(graph)
+      graph = JSON.parse(graph)
 
-      if ! graph
-        workflow = Ginkgo.elasticsearch.get(index: 'workflows', type: 'workflow', id: workflow_id)
-        raise "Unable to find Workflow/#{workflow_id}" unless workflow['found']
-        graph = JSON.parse(workflow['_source']['graph'])
-        set_json :graph, graph
-      end
-
-      run_graph(graph)
-    end
-
-    private
-
-    # @param graph [Hash] noflo graph in JSON format https://github.com/noflo/noflo/blob/master/graph-schema.json
-    def run_graph(graph)
       jids = get_json(:jobs) || {} # store graph process name -> job ids
 
       @jobs = {} # graph process name -> SideJob::Job
@@ -43,7 +30,9 @@ module Workers
           raise "Unable to parse #{info['component']}: Must be of form queue/ClassName" if ! queue || ! klass
 
           if queue == 'workflow'
-            job = queue('core', 'Workers::Workflow', args: [klass])
+            workflow = Ginkgo.elasticsearch.get(index: 'workflows', type: 'workflow', id: klass)
+            raise "Unable to find Workflow/#{klass}" unless workflow['found']
+            job = queue('core', 'Workers::Workflow', args: [workflow['_source']['graph']])
           else
             job = queue(queue, klass)
           end
