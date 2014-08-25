@@ -1,4 +1,6 @@
 $:.unshift File.dirname(__FILE__)
 
-require 'sidejob'
+require 'ginkgo/sidejob'
+
 require 'workers/filter'
+require 'workers/workflow'

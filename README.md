@@ -1,3 +1,4 @@
-Some basic SideJob workers with minimal dependencies.
+Some basic SideJob workers.
 
-Workers::Filter depends on [jq](https://github.com/stedolan/jq).
+* core/Workers::Filter Runs a [jq](https://github.com/stedolan/jq) filter
+* core/Workers::Workflow Runs a workflow graph specified using the noflo JSON format
