@@ -52,7 +52,7 @@ module Workers
         if connection['data']
           # initial fixed data to be sent only once
           if new_jobs.include?(connection['tgt']['process'])
-            tgt_port.push connection['data']
+            tgt_port.write connection['data']
           end
         else
           src_port = get_port(:out, connection['src'])
@@ -103,11 +103,11 @@ module Workers
     def connect_ports(source, targets)
       # copy the output to multiple ports
       loop do
-        data = source.pop
+        data = source.read
         break unless data
         targets.each do |target|
           port = get_port(:in, target)
-          port.push data
+          port.write data
         end
       end
     end

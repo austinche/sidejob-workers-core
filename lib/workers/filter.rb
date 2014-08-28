@@ -26,7 +26,7 @@ module Workers
         # send data on input port to filter input
         inport = input(:in)
         loop do
-          data = inport.pop
+          data = inport.read
           break unless data
           io.puts data
         end
@@ -38,7 +38,7 @@ module Workers
           data = io.gets
           break unless data
           data.chomp!
-          outport.push data
+          outport.write data
         end
       end
     end
