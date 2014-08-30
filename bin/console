@@ -1,0 +1,8 @@
+#!/usr/bin/env ruby
+
+require 'bundler/setup'
+require 'sidejob'
+require_relative '../lib/workers-core'
+
+require 'pry'
+Pry.start
