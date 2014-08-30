@@ -1,5 +1,9 @@
 source 'http://gems.ginkgobioworks.com'
 source 'https://rubygems.org'
 
-gem 'ginkgo-sidejob'
+gem 'sidejob'
+gem 'rake'
+
+gem 'pry'
+gem 'rspec'
 gem 'webmock'

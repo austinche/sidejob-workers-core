@@ -1,22 +1,19 @@
 # expects jq to be in the path
 
-SideJob.register({
-  queue: 'core',
-  class: 'Workers::Filter',
-  description: 'Runs a jq filter',
-  icon: 'filter',
-  inports: [
-    { name: 'filter', type: 'string', description: 'Filter in the jq language: http://stedolan.github.io/jq/' },
-    { name: 'in', type: 'string', description: 'Input data' },
-  ],
-  outports: [
-    { name: 'out', type: 'string', description: 'Filtered output with each line as a separate packet' },
-  ],
-})
-
 module Workers
   class Filter
     include SideJob::Worker
+    register('core', 'Workers::Filter', {
+        description: 'Runs a jq filter',
+        icon: 'filter',
+        inports: [
+            { name: 'filter', type: 'string', description: 'Filter in the jq language: http://stedolan.github.io/jq/' },
+            { name: 'in', type: 'string', description: 'Input data' },
+        ],
+        outports: [
+            { name: 'out', type: 'string', description: 'Filtered output with each line as a separate packet' },
+        ],
+    })
 
     def perform
       filter = get_config(:filter)
