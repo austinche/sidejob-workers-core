@@ -1,4 +1,5 @@
 # expects jq to be in the path
+require 'open3'
 
 module Workers
   class Filter
@@ -17,25 +18,28 @@ module Workers
 
     def perform
       filter = get_config(:filter)
-      suspend and return unless filter
+      suspend unless filter
 
-      IO.popen(['jq', '-c', filter], 'r+') do |io|
+      args = ['jq', '-c']
+      args << filter
+      Open3.popen3(*args) do |stdin, stdout, stderr, wait_thread|
         # send data on input port to filter input
         inport = input(:in)
-        loop do
-          data = inport.read
-          break unless data
-          io.puts data
+        inport.each do |data|
+          stdin.puts data.to_json
         end
-        io.close_write
+        stdin.close_write
 
         # send filter output to output port
         outport = output(:out)
-        loop do
-          data = io.gets
-          break unless data
-          data.chomp!
+        while data = stdout.gets do
+          data = JSON.parse("[#{data.chomp}]")[0] # parses the data back from JSON while also handling primitive types
           outport.write data
+        end
+
+        err = stderr.readlines
+        if err.length > 0
+          raise "jq returned an error:\n#{err.join('')}"
         end
       end
     end
