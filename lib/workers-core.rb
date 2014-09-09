@@ -1,5 +1,3 @@
 require 'sidejob'
 
-require 'workers/filter'
-require 'workers/forwarder'
-require 'workers/placeholder'
+Dir[File.dirname(__FILE__) + '/workers/*.rb'].each {|file| require file}
