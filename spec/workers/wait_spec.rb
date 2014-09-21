@@ -18,10 +18,29 @@ describe Workers::Wait do
   end
 
   it 'completes and forwards in port if ready' do
-    @job.input(:in).write 1
+    @job.input(:in).write 1, 2
     @job.input(:ready).write 1
     SideJob::Worker.drain_queue
     expect(@job.status).to eq 'completed'
-    expect(@job.output(:out).read).to eq 1
+    expect(@job.output(:out).drain).to eq [1, 2]
+  end
+
+  it 'can reset port' do
+    @job.input(:in).write 1
+    @job.input(:ready).write 1
+    SideJob::Worker.drain_queue
+    @job.input(:reset).write 1
+    @job.input(:in).write 2
+    expect(@job.output(:out).drain).to eq [1]
+  end
+
+  it 'can resend after reset' do
+    @job.input(:in).write 1, 2
+    @job.input(:reset).write 1
+    SideJob::Worker.drain_queue
+    expect(@job.output(:out).drain).to eq []
+    @job.input(:ready).write 1
+    SideJob::Worker.drain_queue
+    expect(@job.output(:out).drain).to eq [1, 2]
   end
 end

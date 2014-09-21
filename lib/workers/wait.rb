@@ -5,7 +5,8 @@ module Workers
         description: 'Waits for ready signal before forwarding input',
         icon: 'step-forward',
         inports: [
-            { name: 'ready', type: 'bang', description: 'Forward one packet from in on any ready packet' },
+            { name: 'ready', type: 'bang', description: 'Waits for any packet before forwarding packets' },
+            { name: 'reset', type: 'bang', description: 'After a reset signal, waits for another ready signal' },
             { name: 'in', type: 'all', description: 'Input data' },
         ],
         outports: [
@@ -14,15 +15,26 @@ module Workers
     })
 
     def perform
-      inport = input(:in)
       ready = input(:ready)
+      reset = input(:reset)
+      inport = input(:in)
       outport = output(:out)
-      suspend if ready.size == 0 && inport.size > 0
-      ready.size.times do
-        break if inport.size == 0
+
+      return unless inport.size > 0
+
+      # one reset packet cancels one ready packet
+      while reset.size > 0
+        unset(:ready) and suspend if ready.size == 0
         ready.read
-        outport.write inport.read
+        reset.read
       end
+
+      if ! get(:ready)
+        suspend unless ready.size > 0
+        ready.read
+        set({ready: true})
+      end
+      outport.write *inport.drain
     end
   end
 end
