@@ -24,6 +24,7 @@ module Workers
       suspend unless filter
 
       vars = get_config(:vars)
+      suspend if vars === true # wait for real vars
 
       output(:out).write *Workers::Filter.run_jq(filter, vars, input(:in).drain)
     end
