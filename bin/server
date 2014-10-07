@@ -1,2 +1,2 @@
 #!/bin/bash
-bundle exec sidekiq -q core -r ./lib/workers-core.rb
+exec bundle exec sidekiq -q core --tag core -r ./lib/workers-core.rb
