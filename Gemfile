@@ -5,4 +5,5 @@ gem 'sidejob', git: 'git://git.ginkgobioworks.com/workflow/sidejob', branch: 'ma
 
 gem 'pry'
 gem 'rspec'
+gem 'simplecov'
 gem 'webmock'
