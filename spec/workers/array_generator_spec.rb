@@ -93,7 +93,7 @@ describe Workers::ArrayGenerator do
     expect(@job.output(:out).read).to eq([1, 2, 3])
   end
 
-  it 'use_recent option ignored when specified with collect' do
+  it 'use_recent option is incompatible with collect' do
     @job.input(:config).write [{port: 'in1', use_recent: true, collect: 1}, {port: 'in2'}]
     @job.input(:in1).write 1, true
     @job.input(:in2).write [2,3]
@@ -110,5 +110,33 @@ describe Workers::ArrayGenerator do
     expect(@job.status).to eq 'completed'
     expect(@job.output(:out).size).to eq 1
     expect(@job.output(:out).read).to eq([1, 2, 3, 4, 5])
+  end
+
+  it 'can repeat array' do
+    @job.input(:config).write [{port: 'in1', repeat: 2}, {port: 'in2'}]
+    @job.input(:in1).write [1, 2]
+    @job.input(:in2).write [3]
+    SideJob::Worker.drain_queue
+    expect(@job.status).to eq 'completed'
+    expect(@job.output(:out).size).to eq 1
+    expect(@job.output(:out).read).to eq([1, 2, 1, 2, 3])
+  end
+
+  it 'can repeat single value' do
+    @job.input(:config).write [{port: 'in1', repeat: 3, collect: 1}]
+    @job.input(:in1).write 'a'
+    SideJob::Worker.drain_queue
+    expect(@job.status).to eq 'completed'
+    expect(@job.output(:out).size).to eq 1
+    expect(@job.output(:out).read).to eq(['a', 'a', 'a'])
+  end
+
+  it 'can repeat with collect' do
+    @job.input(:config).write [{port: 'in1', repeat: 2, collect: 3}]
+    @job.input(:in1).write 1, 2, 3, 4
+    SideJob::Worker.drain_queue
+    expect(@job.status).to eq 'suspended'
+    expect(@job.output(:out).size).to eq 1
+    expect(@job.output(:out).read).to eq([1, 2, 3, 1, 2, 3])
   end
 end

@@ -5,7 +5,7 @@ module Workers
         description: 'Generates JSON arrays by concatenating multiple inputs',
         icon: 'list-ol',
         inports: [
-            { name: 'config', type: 'array', description: 'Array of objects specifying the arrays to be concatenated in order. Each object has keys: port (required), use_recent, collect, from_object' },
+            { name: 'config', type: 'array', description: 'Array of objects specifying the arrays to be concatenated in order. Each object has keys: port (required), use_recent, collect, repeat, from_object' },
             { name: 'in1', type: 'all' },
             { name: 'in2', type: 'all' },
             { name: 'in3', type: 'all' },
@@ -72,7 +72,7 @@ module Workers
         # now concatenate all data and generate output
         result = config.each_with_object([]) do |item, result|
           port = item['port']
-          result.concat(current[port])
+          result.concat(current[port] * (item['repeat'] || 1))
           current.delete(port) unless item['use_recent']
         end
         output(:out).write result
