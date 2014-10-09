@@ -15,15 +15,10 @@ module Workers
 
     def perform
       # handle stores
-      if input(:store).size > 0
-        data = input(:store).drain.last
-        set(data: data)
-      else
-        data = get(:data)
-      end
+      data = get_config(:store)
 
       # handle retrieves
-      input(:retrieve).drain.length.times do
+      input(:retrieve).each do
         output(:data).write data
       end
     end
