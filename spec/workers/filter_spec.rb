@@ -50,25 +50,4 @@ describe Workers::Filter do
     @job.input(:filter).write 'syntax error'
     expect { SideJob::Worker.drain_queue }.to raise_error
   end
-
-  it 'can pass variables' do
-    @job.input(:vars).write({foo: [1, 2], bar: 3})
-    @job.input(:filter).write '(($foo | fromjson) | add) + ($bar | tonumber) + (. | tonumber)'
-    @job.input(:in).write 4
-    SideJob::Worker.drain_queue
-    expect(@job.status).to eq 'completed'
-    expect(@job.output(:out).read).to eq 10
-  end
-
-  it 'can wait for vars' do
-    @job.input(:vars).write true
-    @job.input(:filter).write '(($foo | fromjson) | add) + ($bar | tonumber) + (. | tonumber)'
-    @job.input(:in).write 4
-    SideJob::Worker.drain_queue
-    expect(@job.status).to eq 'suspended'
-    @job.input(:vars).write({foo: [1, 2], bar: 3})
-    SideJob::Worker.drain_queue
-    expect(@job.status).to eq 'completed'
-    expect(@job.output(:out).read).to eq 10
-  end
 end

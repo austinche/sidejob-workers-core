@@ -9,7 +9,6 @@ module Workers
             { name: 'true', type: 'string', description: 'jq filter that runs if condition == true' },
             { name: 'false', type: 'string', description: 'jq filter that runs if condition == false' },
             { name: 'else', type: 'string', description: 'jq filter that runs if condition is neither true nor false' },
-            { name: 'vars', type: 'object', description: 'Define variables that can be used in all jq filters' },
             { name: 'in', type: 'all', description: 'Input data' },
         ],
         outports: [
@@ -26,11 +25,10 @@ module Workers
       truefilter = get_config(:true)
       falsefilter = get_config(:false)
       elsefilter = get_config(:else)
-      vars = get_config(:vars)
       suspend unless condition
 
       inputs = input(:in).drain
-      conditions = Workers::Filter.run_jq(condition, vars, inputs)
+      conditions = Workers::Filter.run_jq(condition, inputs)
       raise 'jq returned a different number of conditions from inputs' if inputs.length != conditions.length
       
       istrue = []
@@ -45,9 +43,9 @@ module Workers
           iselse << data
         end
       end
-      output(:true).write *Workers::Filter.run_jq(truefilter, vars, istrue) if truefilter && istrue.length > 0
-      output(:false).write *Workers::Filter.run_jq(falsefilter, vars, isfalse) if falsefilter && isfalse.length > 0
-      output(:else).write *Workers::Filter.run_jq(elsefilter, vars, iselse) if elsefilter && iselse.length > 0
+      output(:true).write *Workers::Filter.run_jq(truefilter, istrue) if truefilter && istrue.length > 0
+      output(:false).write *Workers::Filter.run_jq(falsefilter, isfalse) if falsefilter && isfalse.length > 0
+      output(:else).write *Workers::Filter.run_jq(elsefilter, iselse) if elsefilter && iselse.length > 0
     end
   end
 end
