@@ -1,6 +1,6 @@
 GIT
   remote: git://git.ginkgobioworks.com/workflow/sidejob
-  revision: 816b01bbf1e54d419fc5a5ab632016c7bcd3c614
+  revision: 9e32fd64374294301139cdc844ad835aca29d08e
   branch: master
   specs:
     sidejob (1.0.0)
