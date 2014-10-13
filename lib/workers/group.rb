@@ -1,35 +1,35 @@
 module Workers
   class Group
     include SideJob::Worker
-    register('core', 'Workers::Group', {
+    register(
         description: 'Groups input into an array',
         icon: 'group',
-        inports: [
-            { name: 'n', type: 'integer', description: 'Number of data to group' },
-            { name: 'in', type: 'all', description: 'Input data' },
-        ],
-        outports: [
-            { name: 'out', type: 'array', description: 'Output data' },
-        ],
-    })
+        inports: {
+            n: { mode: :memory, type: 'integer', description: 'Number of data to group' },
+            in: { type: 'all', description: 'Input data' },
+        },
+        outports: {
+           out: { type: 'array', description: 'Output data' },
+        },
+    )
 
     def perform
-      n = get_config(:n)
-      suspend unless n && n > 0
+      raise 'Port in cannot be a memory port' if input(:in).mode == :memory
 
-      data = get(:data) || []
+      loop do
+        n = get(:n)
+        if ! n
+          suspend unless input(:n).data?
+          n = input(:n).read
+          raise 'n must be > 0' unless n > 0
+          set({n: n})
+        end
 
-      # read all data
-      data = data.concat(input(:in).drain)
-      # write out data
-      outport = output(:out)
-      while data.length >= n
-        outport.write data.take(n)
-        data = data.drop(n)
+        return unless input(:in).data?
+        suspend if input(:in).size < n
+
+        output(:out).write input(:in).take(n)
       end
-
-      set(data: data)
-      suspend if data.length != 0
     end
   end
 end

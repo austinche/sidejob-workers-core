@@ -17,5 +17,6 @@ RSpec.configure do |config|
   config.order = 'random'
   config.before(:each) do
     SideJob.redis.flushdb
+    SideJob::Worker.register_all 'core'
   end
 end

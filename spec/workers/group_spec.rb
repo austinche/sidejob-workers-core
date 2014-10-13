@@ -5,6 +5,16 @@ describe Workers::Group do
     @job = SideJob.queue('core', 'Workers::Group')
   end
 
+  it 'raises error if in is memory port' do
+    @job.input(:in).mode = :memory
+    expect { SideJob::Worker.drain_queue }.to raise_error
+  end
+
+  it 'raises error if n is less than 0' do
+    @job.input(:n).write -1
+    expect { SideJob::Worker.drain_queue }.to raise_error
+  end
+
   it 'suspends on no input' do
     SideJob::Worker.drain_queue
     expect(@job.status).to eq 'suspended'
@@ -40,7 +50,7 @@ describe Workers::Group do
     SideJob::Worker.drain_queue
     expect(@job.status).to eq 'suspended'
     expect(@job.output(:out).read).to eq ['a', 'b', 'c']
-    expect(@job.output(:out).read).to be nil
+    expect(@job.output(:out).data?).to be false
   end
 
   it 'handles data over time' do

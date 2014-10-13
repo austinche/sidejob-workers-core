@@ -1,16 +1,16 @@
 module Workers
   class Placeholder
     include SideJob::Worker
-    register('core', 'Workers::Placeholder', {
+    register(
         description: 'Does nothing',
         icon: 'ellipsis-h',
-        inports: [
-            { name: 'in', type: 'all', description: 'Input (ignored)' },
-        ],
-        outports: [
-            { name: 'out', type: 'all', description: 'Output (ignored)' },
-        ],
-    })
+        inports: {
+            '*' => { type: 'all', description: 'Input (ignored)' },
+        },
+        outports: {
+            '*' => { type: 'all', description: 'Output (ignored)' },
+        },
+    )
 
     def perform
     end

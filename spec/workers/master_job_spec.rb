@@ -11,21 +11,20 @@ describe Workers::MasterJob do
   end
 
   it 'can queue a child job' do
-    @job.input(:queue).write({ queue: 'myq', class: 'Workers::Filter' })
+    @job.input(:queue).write({ queue: 'core', class: 'Workers::Filter' })
     expect(@job.children.size).to eq 0
     SideJob::Worker.drain_queue
     expect(@job.status).to eq 'completed'
     expect(@job.children.size).to eq 1
     child = @job.children[0]
     info = child.info
-    expect(info[:queue]).to eq 'myq'
+    expect(info[:queue]).to eq 'core'
     expect(info[:class]).to eq 'Workers::Filter'
-    expect(info[:args]).to eq []
   end
 
   it 'can queue a child job with extra options' do
     at = Time.now.to_f + 1000
-    @job.input(:queue).write({ queue: 'myq', class: 'UnknownClassShouldNotBeRun', at: at })
+    @job.input(:queue).write({ queue: 'core', class: 'Workers::MasterJob', at: at })
     SideJob::Worker.drain_queue
     expect(@job.status).to eq 'completed'
     expect(@job.children.size).to eq 1
@@ -34,7 +33,7 @@ describe Workers::MasterJob do
   end
 
   it 'can queue a child job with a name and send data to inport' do
-    @job.input(:queue).write({ name: 'myjob', queue: 'myq', class: 'Workers::Filter' })
+    @job.input(:queue).write({ name: 'myjob', queue: 'core', class: 'Workers::Filter' })
     @job.input(:inport).write({ name: 'myjob', port: 'unread', data: {foo: 'bar'} })
     SideJob::Worker.drain_queue
     expect(@job.status).to eq 'completed'
@@ -49,7 +48,7 @@ describe Workers::MasterJob do
   end
 
   it 'can queue a child job and forward on outport data' do
-    @job.input(:queue).write({ name: 'myjob', queue: 'myq', class: 'Workers::Filter' })
+    @job.input(:queue).write({ name: 'myjob', queue: 'core', class: 'Workers::Filter' })
     SideJob::Worker.drain_queue
     child = @job.children[0]
     child.output(:test).write({foo: 'bar'})
@@ -60,7 +59,7 @@ describe Workers::MasterJob do
   end
 
   it 'integration test' do
-    @job.input(:queue).write({ name: 'myjob', queue: 'myq', class: 'Workers::Filter' })
+    @job.input(:queue).write({ name: 'myjob', queue: 'core', class: 'Workers::Filter' })
     @job.input(:inport).write({ name: 'myjob', port: 'filter', data: '.foo' })
     @job.input(:inport).write({ name: 'myjob', port: 'in', data: {foo: 'bar'} })
     SideJob::Worker.drain_queue

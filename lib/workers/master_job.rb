@@ -1,17 +1,17 @@
 module Workers
   class MasterJob
     include SideJob::Worker
-    register('core', 'Workers::MasterJob', {
+    register(
         description: 'Queues and writes/reads data from child jobs',
         icon: 'sitemap',
-        inports: [
-            { name: 'inport', type: 'object', description: 'Write some data to the inport of a child job' },
-            { name: 'queue', type: 'object', description: 'Options for new job: at least queue and class are required' },
-        ],
-        outports: [
-            { name: 'outport', type: 'object', description: 'Data on child outports are sent here' },
-        ],
-    })
+        inports: {
+            inport: { type: 'object', description: 'Write some data to the inport of a child job' },
+            queue: { type: 'object', description: 'Options for new job: at least queue and class are required' },
+        },
+        outports: {
+            outport: { type: 'object', description: 'Data on child outports are sent here' },
+        },
+    )
 
     def perform
       names = get(:names) || {} # mapping from job names to job ids
