@@ -1,10 +1,12 @@
 module Workers
-  class ObjectMerge
+  class Merge
     include SideJob::Worker
     register(
         description: 'Waits for data on every input port and merges the input JSON objects in alphabetical order by port name.',
         icon: 'list-ul',
-        inports: {},
+        inports: {
+            '*' => { type: 'object', description: 'Input object to be merged' }
+        },
         outports: {
             out: { type: 'object', description: 'Merged object' },
         },
