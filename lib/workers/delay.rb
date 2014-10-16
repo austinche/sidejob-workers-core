@@ -1,9 +1,9 @@
 module Workers
-  class DelayedForwarder
+  class Delay
     include SideJob::Worker
     register(
         description: 'Forwards all data on input port to output port after a delay',
-        icon: 'step-forward',
+        icon: 'clock-o',
         inports: {
             delay: { mode: :memory, type: 'integer', description: 'Number of seconds to delay sending data' },
             in: { type: 'all', description: 'Input data' },
@@ -14,7 +14,7 @@ module Workers
     )
 
     def perform
-      queue = get(:queue) || []
+      queue = get(:wait_queue) || []
       begin
         for_inputs(:delay, :in) do |delay, input|
           # maintain queue sorted by increasing time to actually send data
@@ -29,8 +29,12 @@ module Workers
           output(:out).write data['data']
         end
 
-        set(queue: queue)
-        run(at: queue[0]['time']) if queue.length > 0
+        if queue.length > 0
+          set(wait_queue: queue)
+          run(at: queue[0]['time'])
+        else
+          unset(:wait_queue)
+        end
       end
     end
   end
