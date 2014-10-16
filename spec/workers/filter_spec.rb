@@ -7,10 +7,10 @@ describe Workers::Filter do
   
   it 'pass through filter with a variety of data types' do
     data = [{'abc' => 123, 'xyz' => 'foo'}, [1, 2, 3, "abc"], 123, 'string', true, false, nil]
-    @job.input(:in).write *data
+    data.each {|x| @job.input(:in).write x}
     expect(@job.input(:in).size).to eq data.length
     @job.input(:filter).write '.'
-    SideJob::Worker.drain_queue
+    @job.run_inline
     data.each do |x|
       expect(@job.output(:out).read).to eq x
     end
@@ -20,34 +20,34 @@ describe Workers::Filter do
   it 'lookup filter number' do
     @job.input(:in).write({"foo" => 42, "bar" => "hello"})
     @job.input(:filter).write '.foo'
-    SideJob::Worker.drain_queue
+    @job.run_inline
     expect(@job.output(:out).read).to eq 42
   end
 
   it 'lookup filter string' do
     @job.input(:in).write({"foo" => 42, "bar" => "hello"})
     @job.input(:filter).write '.bar'
-    SideJob::Worker.drain_queue
+    @job.run_inline
     expect(@job.output(:out).read).to eq "hello"
   end
 
   it 'string interpolation' do
     @job.input(:in).write({"foo" => 42, "bar" => "hello"})
     @job.input(:filter).write'"\(.bar) world: \(.foo+1)"'
-    SideJob::Worker.drain_queue
+    @job.run_inline
     expect(@job.output(:out).read).to eq 'hello world: 43'
   end
 
   it 'length calculation' do
     @job.input(:in).write({"foo" => [1, 2, 3]})
     @job.input(:filter).write '.foo | length'
-    SideJob::Worker.drain_queue
+    @job.run_inline
     expect(@job.output(:out).read).to eq 3
   end
 
   it 'raises error on invalid filter' do
     @job.input(:in).write({"foo" => [1, 2, 3]})
     @job.input(:filter).write 'syntax error'
-    expect { SideJob::Worker.drain_queue }.to raise_error
+    expect { @job.run_inline }.to raise_error
   end
 end
