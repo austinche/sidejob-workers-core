@@ -14,7 +14,7 @@ module Workers
     )
 
     def perform
-      raise 'Port in cannot be a memory port' if input(:in).mode == :memory
+      raise 'Invalid port options for port in' if input(:in).infinite?
 
       loop do
         n = get(:n)

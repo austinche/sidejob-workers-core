@@ -6,39 +6,39 @@ describe Workers::Group do
   end
 
   it 'raises error if in is memory port' do
-    @job.input(:in).mode = :memory
-    expect { SideJob::Worker.drain_queue }.to raise_error
+    @job = SideJob.queue('core', 'Workers::Group', inports: {in: {mode: :memory}})
+    expect { @job.run_inline }.to raise_error
   end
 
   it 'raises error if n is less than 0' do
     @job.input(:n).write -1
-    expect { SideJob::Worker.drain_queue }.to raise_error
+    expect { @job.run_inline }.to raise_error
   end
 
   it 'suspends on no input' do
-    SideJob::Worker.drain_queue
+    @job.run_inline
     expect(@job.status).to eq 'suspended'
   end
 
   it 'suspends until n data have arrived' do
     @job.input(:n).write 3
-    @job.input(:in).write 1, 2
-    SideJob::Worker.drain_queue
+    [1,2].each {|x| @job.input(:in).write x}
+    @job.run_inline
     expect(@job.status).to eq 'suspended'
   end
 
   it 'sends out array of n data' do
     @job.input(:n).write 3
-    @job.input(:in).write 'a', 'b', 'c'
-    SideJob::Worker.drain_queue
+    ['a', 'b', 'c'].each {|x| @job.input(:in).write x}
+    @job.run_inline
     expect(@job.status).to eq 'completed'
     expect(@job.output(:out).read).to eq ['a', 'b', 'c']
   end
 
   it 'handles a multiple of n data' do
     @job.input(:n).write 3
-    @job.input(:in).write 'a', 'b', 'c', 1, 2, 3
-    SideJob::Worker.drain_queue
+    ['a', 'b', 'c', 1, 2, 3].each {|x| @job.input(:in).write x}
+    @job.run_inline
     expect(@job.status).to eq 'completed'
     expect(@job.output(:out).read).to eq ['a', 'b', 'c']
     expect(@job.output(:out).read).to eq [1, 2, 3]
@@ -46,8 +46,8 @@ describe Workers::Group do
 
   it 'handles a non-multiple of n data' do
     @job.input(:n).write 3
-    @job.input(:in).write 'a', 'b', 'c', 'd'
-    SideJob::Worker.drain_queue
+    ['a', 'b', 'c', 'd'].each {|x| @job.input(:in).write x}
+    @job.run_inline
     expect(@job.status).to eq 'suspended'
     expect(@job.output(:out).read).to eq ['a', 'b', 'c']
     expect(@job.output(:out).data?).to be false
@@ -55,24 +55,24 @@ describe Workers::Group do
 
   it 'handles data over time' do
     @job.input(:n).write 3
-    @job.input(:in).write 'a', 'b'
-    SideJob::Worker.drain_queue
+    ['a', 'b'].each {|x| @job.input(:in).write x}
+    @job.run_inline
     expect(@job.status).to eq 'suspended'
     @job.input(:in).write 'c'
-    SideJob::Worker.drain_queue
+    @job.run_inline
     expect(@job.output(:out).read).to eq ['a', 'b', 'c']
   end
 
   it 'properly persists unwritten stored data' do
     @job.input(:n).write 3
     @job.input(:in).write 'a'
-    SideJob::Worker.drain_queue
-    @job.input(:in).write 'b', 'c'
-    SideJob::Worker.drain_queue
+    @job.run_inline
+    ['b', 'c'].each {|x| @job.input(:in).write x}
+    @job.run_inline
     expect(@job.status).to eq 'completed'
     expect(@job.output(:out).read).to eq ['a', 'b', 'c']
-    @job.input(:in).write 'd', 'e', 'f'
-    SideJob::Worker.drain_queue
+    ['d', 'e', 'f'].each {|x| @job.input(:in).write x}
+    @job.run_inline
     expect(@job.output(:out).read).to eq ['d', 'e', 'f']
   end
 end
