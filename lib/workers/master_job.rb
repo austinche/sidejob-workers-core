@@ -15,7 +15,7 @@ module Workers
 
     def perform
       names = get(:names) || {} # mapping from job names to job ids
-      input(:queue).each do |options|
+      for_inputs(:queue) do |options|
         name = options.delete('name')
         queue = options.delete('queue')
         klass = options.delete('class')
@@ -26,7 +26,7 @@ module Workers
         end
       end
 
-      input(:inport).each do |data|
+      for_inputs(:inport) do |data|
         name = data['name'] or raise 'Missing required name key for inport data specification'
         port = data['port'] or raise 'Missing required port key for inport data specification'
         data = data['data']
