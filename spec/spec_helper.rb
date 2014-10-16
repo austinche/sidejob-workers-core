@@ -6,6 +6,7 @@ end
 require 'bundler/setup'
 
 require 'rspec/core'
+require 'pry'
 require 'sidejob'
 require 'sidejob/testing'
 require 'webmock/rspec'

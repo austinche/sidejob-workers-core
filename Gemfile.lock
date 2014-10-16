@@ -1,9 +1,9 @@
 GIT
   remote: git://git.ginkgobioworks.com/workflow/sidejob
-  revision: 8ff6a3bb00030d51ee15f418d351ab4ffb15518d
+  revision: aa008527868d61d5789a93bce4d7778997a07cec
   branch: master
   specs:
-    sidejob (1.0.0)
+    sidejob (2.0.0)
       sidekiq (~> 3.2.5)
 
 GEM
@@ -42,7 +42,7 @@ GEM
       rspec-support (~> 3.0.0)
     rspec-support (3.0.4)
     safe_yaml (1.0.3)
-    sidekiq (3.2.5)
+    sidekiq (3.2.6)
       celluloid (= 0.15.2)
       connection_pool (>= 2.0.0)
       json
