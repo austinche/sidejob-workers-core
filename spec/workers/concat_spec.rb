@@ -2,10 +2,7 @@ require 'spec_helper'
 
 describe Workers::Concat do
   before do
-    @job = SideJob.queue('core', 'Workers::Concat')
-    # let the job know which ports exist
-    @job.input(:in1)
-    @job.input(:in2)
+    @job = SideJob.queue('core', 'Workers::Concat', inports: {in1: {}, in2: {}})
   end
 
   it 'completes on no input' do

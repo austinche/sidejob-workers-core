@@ -14,7 +14,7 @@ module Workers
     )
 
     def perform
-      raise 'Invalid port options for port in' if input(:in).infinite?
+      raise 'Port in cannot have a default value' if input(:in).default?
 
       loop do
         n = get(:n)

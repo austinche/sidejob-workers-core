@@ -2,7 +2,7 @@ module Workers
   class Wait
     include SideJob::Worker
     register(
-        description: 'Waits for data on input ports and sends selected to the same named output ports',
+        description: 'Waits for data on input ports and sends all to the same named output ports',
         icon: 'step-forward',
         inports: {
             '*' => { type: 'all', description: 'Input data' },

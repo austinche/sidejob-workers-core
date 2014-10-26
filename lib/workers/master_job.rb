@@ -5,8 +5,8 @@ module Workers
         description: 'Queues and writes/reads data from child jobs',
         icon: 'sitemap',
         inports: {
-            inport: { type: 'object', description: 'Write some data to the inport of a child job' },
-            queue: { type: 'object', description: 'Options for new job: at least queue and class are required' },
+            inport: { type: 'object', description: 'Write some data to the inport of a child job: name, port, and data are required' },
+            queue: { type: 'object', description: 'Options for new job: at least queue, class, and name are required' },
         },
         outports: {
             outport: { type: 'object', description: 'Data on child outports are sent here' },
@@ -14,32 +14,25 @@ module Workers
     )
 
     def perform
-      names = get(:names) || {} # mapping from job names to job ids
       for_inputs(:queue) do |options|
-        name = options.delete('name')
         queue = options.delete('queue')
         klass = options.delete('class')
-        child = queue(queue, klass, **options.symbolize_keys)
-        if name
-          names[name.to_s] = child.jid
-          set(names: names)
-        end
+        queue(queue, klass, **options.symbolize_keys)
       end
 
       for_inputs(:inport) do |data|
         name = data['name'] or raise 'Missing required name key for inport data specification'
         port = data['port'] or raise 'Missing required port key for inport data specification'
         data = data['data']
-        child = SideJob.find(names[name]) or raise "Unable to find job named #{name}"
-        child.input(port).write data
+        job = child(name) or raise "Unable to find job named #{name}"
+        job.input(port).write data
       end
 
       out = output(:outport)
-      children.each do |child|
-        name = names.key(child.jid)
-        child.outports.each do |outport|
+      children.each_pair do |name, job|
+        job.outports.each do |outport|
           outport.each do |data|
-            out.write({name: name, id: child.jid, port: outport.name, data: data})
+            out.write({name: name, id: job.id, port: outport.name, data: data})
           end
         end
       end

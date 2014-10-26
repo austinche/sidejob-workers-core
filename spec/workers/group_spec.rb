@@ -5,8 +5,8 @@ describe Workers::Group do
     @job = SideJob.queue('core', 'Workers::Group')
   end
 
-  it 'raises error if in is memory port' do
-    @job = SideJob.queue('core', 'Workers::Group', inports: {in: {mode: :memory}})
+  it 'raises error if in port has default' do
+    @job = SideJob.queue('core', 'Workers::Group', inports: {in: {default: true}})
     expect { @job.run_inline }.to raise_error
   end
 

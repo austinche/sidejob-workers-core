@@ -2,7 +2,7 @@ require 'spec_helper'
 
 describe Workers::Object do
   before do
-    @job = SideJob.queue('core', 'Workers::Object')
+    @job = SideJob.queue('core', 'Workers::Object', inports: {key1: {}, key2: {}})
   end
 
   it 'completes on no input' do
