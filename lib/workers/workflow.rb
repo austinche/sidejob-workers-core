@@ -67,12 +67,12 @@ module Workers
       if @graph['inports']
         @graph['inports'].each_pair do |name, port|
           job = node_job(port['process'], force_start: true)
-          input(name).connect_to job.input(port['port']), job: id
+          input(name).connect_to job.input(port['port'])
         end
       end
 
       connections.each_pair do |port, targets|
-        port.connect_to targets, job: id
+        port.connect_to targets
       end
 
       # we complete if all jobs are completed
@@ -113,14 +113,30 @@ module Workers
       raise "Missing required queue or class metadata for node #{node}" if ! queue || ! klass
 
       # we only start nodes that have initial data defined (can be empty) or that have received input data
-      init = (info['metadata']['inports'] || {}).values.any? {|port| port['data']} ||
-          (info['metadata']['outports'] || {}).values.any? {|port| port['data']}
+      init = (info['metadata']['inports'] || {}).values.any? {|spec| spec['data']} ||
+          (info['metadata']['outports'] || {}).values.any? {|spec| spec['data']}
 
       return nil unless init || force_start
 
       job = queue(queue, klass, name: node, args: info['metadata']['args'],
                   inports: info['metadata']['inports'], outports: info['metadata']['outports'])
       @nodes[node] = job
+
+      SideJob::Port.log_group do
+        (info['metadata']['inports'] || {}).each_pair do |port, spec|
+          if spec['data']
+            port = job.input(port)
+            spec['data'].each { |x| port.write(x) }
+          end
+        end
+
+        (info['metadata']['outports'] || {}).each_pair do |port, spec|
+          if spec['data']
+            port = job.output(port)
+            spec['data'].each { |x| port.write(x) }
+          end
+        end
+      end
 
       job
     end
