@@ -49,186 +49,291 @@ describe Workers::Workflow do
     end
   end
 
-  def stub_workflow(workflow_id, graph)
-    stub_request(:get, "http://localhost:9200/workflows/workflow/#{workflow_id}/_source").to_return(status: 200, body: {'graph' => graph.to_json})
-  end
-
-  def stub_job(job_id, graph)
-    stub_request(:get, "http://localhost:9200/jobs/job/#{job_id}/_source").to_return(status: 200, body: {'graph' => graph.to_json})
-  end
-
-  def run_graph(graph)
+  def run_graph(graph, drain_options={})
     @job = SideJob.queue('core', 'Workers::Workflow', args: [12345], inports: graph[:inports], outports: graph[:outports])
-    stub_workflow 12345, graph
-    SideJob::Worker.drain_queue
-    @job.reload
+    SideJob.redis.hset('workflows', 12345, graph.to_json)
+    SideJob::Worker.drain_queue(drain_options)
   end
 
   before do
-    stub_request(:get, %r{http://localhost:9200/jobs/job.*}).to_return(status: 200, body: {})
-    stub_request(:post, %r{http://localhost:9200/jobs/job.*}).to_return(status: 200, body: {})
-    stub_request(:get, %r{http://localhost:9200/workflows/workflow/.*/_source}).to_return(status: 200, body: false)
-    stub_workflow 123, {}
+    SideJob.redis.hset('workflows', 'empty', '{}')
   end
 
-  it 'can run an empty graph' do
-    run_graph({})
-    expect(@job.status).to eq 'completed'
-  end
-
-  it 'fails on reference to non-existent workflow' do
-    @job = SideJob.queue('core', 'Workers::Workflow', args: [12345])
-    expect { SideJob::Worker.drain_queue }.to raise_error
-    @job.reload
-    expect(@job.status).to eq 'failed'
-  end
-
-  describe 'child jobs' do
-    it 'does not start child workflow if no input' do
-      run_graph({processes: {'abc' => { 'metadata' => {'queue' => 'core', 'class' => 'Workers::Workflow', 'args' => [123] } }}, connections: []})
+  describe 'runs graphs' do
+    it 'can run an empty graph' do
+      @job = SideJob.queue('core', 'Workers::Workflow', args: ['empty'])
+      SideJob::Worker.drain_queue
       expect(@job.status).to eq 'completed'
-      expect(@job.children.size).to be(0)
     end
 
-    it 'starts child job if there is initial input' do
-      run_graph({processes: {'abc' => { 'metadata' => {
-          'queue' => 'core', 'class' => 'Workers::Workflow', 'args' => [123],
-          'inports' => {'in' => {'data' => [1]}}
-      } }}, connections: []})
+    it 'suspends on reference to non-existent workflow' do
+      @job = SideJob.queue('core', 'Workers::Workflow', args: [12345])
+      SideJob::Worker.drain_queue
+      expect(@job.status).to eq 'suspended'
+    end
+
+    it 'fails if a child job fails' do
+      run_graph({nodes: {error: {queue: 'core', class: 'Workers::TestError' }},
+                 inports: {test: {node: 'error', inport: 'in'}}})
+      @job.input('test').write false
+      SideJob::Worker.drain_queue({errors: false})
+      expect(@job.children.size).to be(1)
+      expect(@job.child('error').status).to eq 'failed'
+      expect(@job.status).to eq 'failed'
+    end
+  end
+
+  describe '__graph port' do
+    it 'can not specify workflow id and read graph from port' do
+      @job = SideJob.queue('core', 'Workers::Workflow')
+      @job.input(:__graph).write({})
+      SideJob::Worker.drain_queue
+      expect(@job.status).to eq 'completed'
+    end
+
+    it 'updates and saves new graphs' do
+      @job = SideJob.queue('core', 'Workers::Workflow', args: ['empty'])
+      SideJob::Worker.drain_queue
+      expect(@job.get(:graph)).to eq({})
+      new_graph = {nodes: {abc: {queue: 'core', class: 'Workers::Workflow', args: ['empty']}}}
+      @job.input(:__graph).write(new_graph)
+      SideJob::Worker.drain_queue
+      expect(@job.get(:graph)).to eq(JSON.parse(new_graph.to_json))
+    end
+
+    it 'starts child jobs when graph changes' do
+      run_graph({nodes: {abc: {queue: 'core', class: 'Workers::Workflow', args: ['empty']}}})
+      expect(@job.children.size).to be(0)
+      expect(@job.status).to eq 'completed'
+      @job.input(:__graph).write({init: [{node: 'abc'}],
+                                  nodes: {abc: {queue: 'core', class: 'Workers::Workflow', args: ['empty']}}})
+      SideJob::Worker.drain_queue
+      expect(@job.children.size).to be(1)
+      expect(@job.status).to eq 'completed'
+    end
+
+    it 'disowns child jobs that are no longer in the graph' do
+      run_graph({init: [{node: 'abc'}], nodes: {abc: {queue: 'core', class: 'Workers::Workflow', args: ['empty']}}})
+      expect(@job.children.size).to be(1)
+      child = @job.child('abc')
+      expect(child).to_not be nil
+      expect(child.parent).to eq @job
+      @job.input(:__graph).write({})
+      SideJob::Worker.drain_queue
+      expect(@job.children.size).to be(0)
+      expect(child.parent).to be nil
+      expect(@job.child('abc')).to be nil
+    end
+  end
+
+  describe 'graph init' do
+    it 'correctly handles initial data' do
+      now = Time.now
+      allow(Time).to receive(:now) { now }
+      run_graph({init: [{node: 'x2', inport: 'in', data: 4}],
+                 nodes: {x2: { 'queue' => 'core', 'class' => 'Workers::TestDouble'}},
+                 outports: {doubled: {node: 'x2', outport: 'out'}}})
+      expect(@job.children.size).to be(1)
+      x2 = @job.child('x2')
+      expect(@job.status).to eq 'completed'
+      expect(SideJob.logs).to eq [{'job' => @job.id, 'timestamp' => SideJob.timestamp,
+                                   'read' => [], 'write' => [{'job' => x2.id, 'inport' => 'in', 'data' => [4]}]},
+                                  {'job' => x2.id, 'timestamp' => SideJob.timestamp,
+                                   'read' => [{'job' => x2.id, 'inport' => 'in', 'data' => [4]}],
+                                   'write' => [{'job' => x2.id, 'outport' => 'out', 'data' => [8]}],
+                                  },
+                                  {'job' => @job.id, 'timestamp' => SideJob.timestamp,
+                                   'read' => [{'job' => x2.id, 'outport' => 'out', 'data' => [8]}],
+                                   'write' => [{'job' => @job.id, 'outport' => 'doubled', 'data' => [8]}],
+                                  },
+                                  ]
+      expect(@job.output(:doubled).read).to eq 8
+    end
+
+    it 'starts child job when there is initial input' do
+      run_graph({init: [{node: 'abc', inport: 'in', data: 1}],
+                 nodes: {abc: {queue: 'core', class: 'Workers::Workflow', args: ['empty']}}})
       expect(@job.status).to eq 'completed'
       expect(@job.children.size).to be(1)
       child = @job.child('abc')
       expect(child.get(:queue)).to eq 'core'
       expect(child.get(:class)).to eq 'Workers::Workflow'
-      expect(child.get(:args)).to eq [123]
+      expect(child.get(:args)).to eq ['empty']
+    end
+
+    it 'can send data to job outport' do
+      run_graph({init: [{node: 'sum', outport: 'out', data: 5}],
+                 nodes: {sum: {queue: 'core', class: 'Workers::TestSum' },
+                         double: {queue: 'core', class: 'Workers::TestDouble' }},
+                 edges: [{from: {node: 'sum', outport: 'out'}, to: {node: 'double', inport: 'in'}}],
+                 inports: {nums: {node: 'sum', inport: 'in'}},
+                 outports: {result: {node: 'double', outport: 'out'}},
+                })
+      expect(@job.children.size).to be(2)
+      expect(@job.status).to eq 'completed'
+      expect(@job.output(:result).read).to eq 10
+    end
+
+    it 'sends multiple initial data' do
+      run_graph({init: [{node: 'x2', inport: 'in', data: 4}, {node: 'x2', inport: 'in', data: 5}],
+                 nodes: {x2: { 'queue' => 'core', 'class' => 'Workers::TestDouble'}},
+                 outports: {doubled: {node: 'x2', outport: 'out'}}})
+      expect(@job.children.size).to be(1)
+      expect(@job.status).to eq 'completed'
+      expect(@job.output(:doubled).read).to eq 8
+      expect(@job.output(:doubled).read).to eq 10
+    end
+
+    it 'can initialize a child job without sending data' do
+      run_graph({init: [{node: 'abc'}],
+                 nodes: {abc: {queue: 'core', class: 'Workers::Workflow', args: ['empty']}}})
+      expect(@job.status).to eq 'completed'
+      expect(@job.children.size).to be(1)
+      child = @job.child('abc')
+      expect(child.get(:queue)).to eq 'core'
+      expect(child.get(:class)).to eq 'Workers::Workflow'
+      expect(child.get(:args)).to eq ['empty']
+    end
+
+    it 'can adopt a child job instead of starting a new one' do
+      child = SideJob.queue('core', 'Workers::Workflow', args: ['empty'])
+      expect(child.parent).to be nil
+      run_graph({init: [{node: 'abc', job: child.id}],
+                 nodes: {abc: {queue: 'core', class: 'Workers::Workflow', args: ['empty']}}})
+      expect(@job.children.size).to be(1)
+      expect(child.parent).to eq @job
+    end
+
+    it 'raises error if child job is specified but node is already started' do
+      child = SideJob.queue('core', 'Workers::Workflow', args: ['empty'])
+      run_graph({init: [{node: 'abc'}],
+                 nodes: {abc: {queue: 'core', class: 'Workers::Workflow', args: ['empty']}}})
+      @job.input(:__graph).write({init: [{node: 'abc', job: child.id}],
+                                  nodes: {abc: {queue: 'core', class: 'Workers::Workflow', args: ['empty']}}})
+      expect { SideJob::Worker.drain_queue }.to raise_error
+    end
+
+    it 'raises errors if child job to be adopted params does not match node' do
+      expect { run_graph({init: [{node: 'abc', job: 'missing'}],
+                          nodes: {abc: {queue: 'core', class: 'Workers::Workflow', args: ['empty']}}})
+      }.to raise_error
+      expect { run_graph({init: [{node: 'abc', job: SideJob.queue('wrong', 'Workers::Workflow', args: ['empty']).id}],
+                          nodes: {abc: {queue: 'core', class: 'Workers::Workflow', args: ['empty']}}})
+      }.to raise_error
+      expect { run_graph({init: [{node: 'abc', job: SideJob.queue('core', 'wrong', args: ['empty']).id}],
+                          nodes: {abc: {queue: 'core', class: 'Workers::Workflow', args: ['empty']}}})
+      }.to raise_error
+      expect { run_graph({init: [{node: 'abc', job: SideJob.queue('core', 'Workers::Workflow', args: ['wrong']).id}],
+                          nodes: {abc: {queue: 'core', class: 'Workers::Workflow', args: ['empty']}}})
+      }.to raise_error
+    end
+  end
+
+  describe 'graph ports' do
+    it 'handles inports and outports' do
+      run_graph({nodes: {sum: {queue: 'core', class: 'Workers::TestSum' }},
+                 inports: {nums: {node: 'sum', inport: 'in'}},
+                 outports: {total: {node: 'sum', outport: 'out'}},
+                })
+      @job.input(:nums).write [1, 2, 3, 4]
+      SideJob::Worker.drain_queue
+      expect(@job.children.size).to be(1)
+      expect(@job.status).to eq 'completed'
+      expect(@job.output(:total).read).to eq 10
+    end
+
+    it 'updates inports and outports from a new graph' do
+      run_graph({nodes: {sum: {queue: 'core', class: 'Workers::TestSum' }}})
+      expect(@job.inports.size).to eq 1 # __graph port
+      expect(@job.outports.size).to eq 0
+      @job.input(:__graph).write({nodes: {sum: {queue: 'core', class: 'Workers::TestSum' }},
+                 inports: {nums: {node: 'sum', inport: 'in'}},
+                 outports: {total: {node: 'sum', outport: 'out'}},
+                })
+      @job.input(:nums).write [1, 2, 3, 4]
+      SideJob::Worker.drain_queue
+      expect(@job.inports.size).to eq 2
+      expect(@job.outports.size).to eq 1
+      expect(@job.output(:total).read).to eq 10
+    end
+    
+    it 'does not start a child job connected to a graph inport unless there is input' do
+      run_graph({nodes: {sum: {queue: 'core', class: 'Workers::TestSum' }},
+                 inports: {nums: {node: 'sum', inport: 'in'}},
+                 outports: {total: {node: 'sum', outport: 'out'}},
+                })
+      expect(@job.status).to eq 'completed'
+      expect(@job.children.size).to be(0)
+      @job.input(:nums).write [1, 2, 3]
+      SideJob::Worker.drain_queue
+      expect(@job.children.size).to be(1)
+    end
+  end
+
+  describe 'graph nodes' do
+    it 'does not start child workflow if no input' do
+      run_graph({nodes: {abc: {queue: 'core', class: 'Workers::Workflow', args: ['empty'] }}})
+      expect(@job.status).to eq 'completed'
+      expect(@job.children.size).to be(0)
+    end
+
+    it 'does not start a child job unless there is input from an upstream job' do
+      run_graph({init: [{node: 'abc'}],
+                 nodes: {abc: {queue: 'core', class: 'Workers::Workflow', args: ['empty']},
+                         xyz: {queue: 'core', class: 'Workers::TestDouble'}},
+                 edges: [{from: {node: 'abc', outport: 'out'}, to: {node: 'xyz', inport: 'in'}}],
+                })
+      expect(@job.status).to eq 'completed'
+      expect(@job.children.size).to be(1)
+      child = @job.child('abc')
+      expect(child.get(:queue)).to eq 'core'
+      expect(child.get(:class)).to eq 'Workers::Workflow'
+      expect(child.get(:args)).to eq ['empty']
     end
 
     it 'only starts a child job once' do
-      run_graph({processes: {'abc' => { 'metadata' => {
-          'queue' => 'core', 'class' => 'Workers::Workflow', 'args' => [123],
-          'inports' => {'in' => {'data' => [1]}}
-      } }}, connections: []})
+      run_graph({init: [{node: 'abc', inport: 'in', data: 1}],
+                 nodes: {abc: {queue: 'core', class: 'Workers::Workflow', args: ['empty']}}})
       @job.run
       expect(@job.status).to eq 'queued'
       SideJob::Worker.drain_queue
-      @job.reload
       expect(@job.status).to eq 'completed'
       expect(@job.children.size).to be(1)
     end
+  end
 
-    it 'handles starting a child job when graph changes' do
-      run_graph({})
-      expect(@job.children.size).to be(0)
-      expect(@job.status).to eq 'completed'
-      stub_job @job.id, {processes: {'abc' => { 'metadata' => {
-          'queue' => 'core', 'class' => 'Workers::Workflow', 'args' => [123],
-          'inports' => {'in' => {'data' => []}}
-      }}}, connections: []}
-      @job.run
+  describe 'graph edges' do
+    it 'handles connections between jobs' do
+      run_graph({nodes: {sum: {queue: 'core', class: 'Workers::TestSum' },
+                         double: {queue: 'core', class: 'Workers::TestDouble' }},
+                 edges: [{from: {node: 'sum', outport: 'out'}, to: {node: 'double', inport: 'in'}}],
+                 inports: {nums: {node: 'sum', inport: 'in'}},
+                 outports: {result: {node: 'double', outport: 'out'}},
+                })
+      @job.input(:nums).write [1, 2, 3, 4]
       SideJob::Worker.drain_queue
-      @job.reload
-      expect(@job.children.size).to be(1)
+      expect(@job.children.size).to be(2)
       expect(@job.status).to eq 'completed'
+      expect(@job.output(:result).read).to eq 20
     end
-  end
 
-  it 'correctly handles initial data' do
-    now = Time.now
-    allow(Time).to receive(:now) { now }
-    run_graph({processes: {'x2' => { 'metadata' => {
-        'queue' => 'core', 'class' => 'Workers::TestDouble',
-        'inports' => { 'in' => {'data' => [4]}}
-    } }}, connections: [], outports: {'doubled' => {'process' => 'x2', 'port' => 'out'}}})
-    expect(@job.children.size).to be(1)
-    x2 = @job.child('x2')
-    expect(@job.status).to eq 'completed'
-    expect(SideJob.logs).to eq [{'job' => @job.id, 'timestamp' => SideJob.timestamp,
-                                 'read' => [], 'write' => [{'job' => x2.id, 'inport' => 'in', 'data' => [4]}]},
-                                {'job' => x2.id, 'timestamp' => SideJob.timestamp,
-                                 'read' => [{'job' => x2.id, 'inport' => 'in', 'data' => [4]}],
-                                 'write' => [{'job' => x2.id, 'outport' => 'out', 'data' => [8]}],
-                                },
-                                {'job' => @job.id, 'timestamp' => SideJob.timestamp,
-                                 'read' => [{'job' => x2.id, 'outport' => 'out', 'data' => [8]}],
-                                 'write' => [{'job' => @job.id, 'outport' => 'doubled', 'data' => [8]}],
-                                },
-                                ]
-    expect(@job.output(:doubled).read).to eq 8
-  end
-
-  it 'sends multiple initial data' do
-    run_graph({processes: {'x2' => { 'metadata' => {
-        'queue' => 'core', 'class' => 'Workers::TestDouble',
-        'inports' => { 'in' => {'data' => [4,5]}}
-    } }}, connections: [], outports: {'doubled' => {'process' => 'x2', 'port' => 'out'}}})
-    expect(@job.children.size).to be(1)
-    expect(@job.status).to eq 'completed'
-    expect(@job.output(:doubled).read).to eq 8
-    expect(@job.output(:doubled).read).to eq 10
-  end
-
-  it 'correctly handles inports and outports' do
-    run_graph({processes: {'sum' => { 'metadata' => { 'queue' => 'core', 'class' => 'Workers::TestSum' }}},
-               inports: {'nums' => {'process' => 'sum', 'port' => 'in'}},
-               outports: {'total' => {'process' => 'sum', 'port' => 'out'}},
-              })
-    @job.input(:nums).write [1, 2, 3, 4]
-    SideJob::Worker.drain_queue
-    @job.reload
-    expect(@job.children.size).to be(1)
-    expect(@job.status).to eq 'completed'
-    expect(@job.output(:total).read).to eq 10
-  end
-
-  it 'handles connections between jobs' do
-    run_graph({processes: {
-        'sum' => { 'metadata' => { 'queue' => 'core', 'class' => 'Workers::TestSum' }},
-        'double' => { 'metadata' => { 'queue' => 'core', 'class' => 'Workers::TestDouble' }}},
-               connections: [{'src' => {'process' => 'sum', 'port' => 'out'}, 'tgt' => {'process' => 'double', 'port' => 'in'}}],
-               inports: {'nums' => {'process' => 'sum', 'port' => 'in'}},
-               outports: {'result' => {'process' => 'double', 'port' => 'out'}},
-              })
-    @job.input(:nums).write [1, 2, 3, 4]
-    SideJob::Worker.drain_queue
-    @job.reload
-    expect(@job.children.size).to be(2)
-    expect(@job.status).to eq 'completed'
-    expect(@job.output(:result).read).to eq 20
-  end
-
-  it 'sends data to outport correctly if another job also uses the output' do
-    run_graph({processes: {
-        'sum' => { 'metadata' => { 'queue' => 'core', 'class' => 'Workers::TestSum' }},
-        'double' => { 'metadata' => { 'queue' => 'core', 'class' => 'Workers::TestDouble' }},
-        'double2' => { 'metadata' => { 'queue' => 'core', 'class' => 'Workers::TestDouble' }}},
-               connections: [
-                   {'src' => {'process' => 'sum', 'port' => 'out'}, 'tgt' => {'process' => 'double', 'port' => 'in'}},
-                   {'src' => {'process' => 'double', 'port' => 'out'}, 'tgt' => {'process' => 'double2', 'port' => 'in'}},
-               ],
-               inports: {'nums' => {'process' => 'sum', 'port' => 'in'}},
-               outports: {'doubled' => {'process' => 'double', 'port' => 'out'},
-                          'quadrupled' => {'process' => 'double2', 'port' => 'out'}},
-              })
-    @job.input(:nums).write [1, 2, 3, 4]
-    SideJob::Worker.drain_queue
-    @job.reload
-    expect(@job.children.size).to be(3)
-    expect(@job.status).to eq 'completed'
-    expect(@job.output(:doubled).read).to eq 20
-    expect(@job.output(:quadrupled).read).to eq 40
-  end
-
-  it 'fails if a child job fails' do
-    @job = SideJob.queue('core', 'Workers::Workflow', args: [12345], inports: {test: {}})
-    stub_workflow(12345, {processes: {
-        'error' => { 'metadata' => { 'queue' => 'core', 'class' => 'Workers::TestError' }}},
-                          inports: {'test' => {'process' => 'error', 'port' => 'in'}},
-    })
-    @job.input(:test).write true
-    SideJob::Worker.drain_queue(errors: false)
-    @job.reload
-    expect(@job.children.size).to be(1)
-    expect(@job.child('error').status).to eq 'failed'
-    expect(@job.status).to eq 'failed'
+    it 'sends data to outport correctly if another job also uses the output' do
+      run_graph({nodes: {sum: {queue: 'core', class: 'Workers::TestSum' },
+                         double: {queue: 'core', class: 'Workers::TestDouble' },
+                         double2: {queue: 'core', class: 'Workers::TestDouble' }},
+                edges: [
+                     {from: {node: 'sum', outport: 'out'}, to: {node: 'double', inport: 'in'}},
+                     {from: {node: 'double', outport: 'out'}, to: {node: 'double2', inport: 'in'}},
+                 ],
+                 inports: {nums: {node: 'sum', inport: 'in'}},
+                 outports: {doubled: {node: 'double', outport: 'out'}, quadrupled: {node: 'double2', outport: 'out'}},
+                })
+      @job.input(:nums).write [1, 2, 3, 4]
+      SideJob::Worker.drain_queue
+      expect(@job.children.size).to be(3)
+      expect(@job.status).to eq 'completed'
+      expect(@job.output(:doubled).read).to eq 20
+      expect(@job.output(:quadrupled).read).to eq 40
+    end
   end
 end

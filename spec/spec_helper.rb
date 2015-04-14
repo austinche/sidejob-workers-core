@@ -3,8 +3,6 @@ SimpleCov.start
 
 require 'bundler/setup'
 
-ENV['ES_ENV'] = 'test'
-
 require 'rspec/core'
 require 'pry'
 require 'sidejob'

@@ -1,13 +1,11 @@
-require 'ginkgo/elasticsearch'
-
 # A workflow graph specifies data flow between jobs and ports
-# Runs a graph in the noflo json format with some additions to metadata
 
 module Workers
   class Workflow
     include SideJob::Worker
     register(
         inports: {
+            '__graph' => { type: 'object', description: 'Set workflow graph' },
             '*' => { type: 'all', description: 'Workflow inport' },
         },
         outports: {
@@ -15,59 +13,77 @@ module Workers
         },
     )
 
-    # Loads graph from elasticsearch and runs a workflow
-    # The graph is expected to be in noflo graph JSON format https://github.com/noflo/noflo/blob/master/graph-schema.json
-    def perform(workflow_id)
-      # use job specific graph if it exists, otherwise load in graph from workflow
-      es_job = Ginkgo.ES.get_source(index: 'jobs', type: 'job', id: id, ignore: 404)
-      if es_job && es_job['graph']
-        @graph = JSON.parse(es_job['graph'])
-      else
-        workflow = Ginkgo.ES.get_source(index: 'workflows', type: 'workflow', id: workflow_id, ignore: 404)
-        raise "Unable to find Workflow/#{workflow_id}" unless workflow && workflow['graph']
-        @graph = JSON.parse(workflow['graph'])
-        es_update_or_create id, {
-            queue: get(:queue), class: get(:class), args: get(:args), # include these fields for lims/ui on first load
-            graph: @graph.to_json,
-        }
-      end
-
+    # Workflow graphs should either be sent in via the __graph port or
+    # stored in SideJob.redis under the workflows key with the given workflow_id.
+    # See the spec for examples of the graph format.
+    def perform(workflow_id=nil)
       @nodes = children # graph node id -> SideJob::Job
 
-      (@graph['processes'] || {}).each_key do |node|
-        node_job(node)
+      # group so graph read and init data are together
+      SideJob::Port.log_group do
+        new_graph = input('__graph').entries.last
+        if workflow_id && ! new_graph && ! get(:graph)
+          new_graph = JSON.parse(SideJob.redis.hget('workflows', workflow_id)) rescue nil
+        end
+
+        if new_graph
+          @graph = new_graph
+          init = @graph['init']
+          @graph.delete('init')
+          set({graph: @graph})
+          process_init(init)
+          self.inports = @graph['inports'] || {}
+          self.outports = @graph['outports'] || {}
+        else
+          @graph = get(:graph)
+          suspend unless @graph
+        end
       end
 
-      connections = {} # SideJob::Port (output port) -> Array<Hash|SideJob::Port> {'process' => '...', 'port' => '...'}
-      (@graph['connections'] || []).each do |connection|
-        src_job = @nodes[connection['src']['process']]
+      @graph['nodes'] ||= {}
+      @graph['edges'] ||= []
+      @graph['inports'] ||= {}
+      @graph['outports'] ||= {}
+
+      # disown any jobs that are no longer in the graph
+      reload = false
+      @nodes.each_key do |node|
+        if ! @graph['nodes'][node]
+          disown(node)
+          reload = true
+        end
+      end
+      @nodes = children if reload
+
+      connections = {} # SideJob::Port (output port) -> Array<SideJob::Port>
+      @graph['edges'].each do |connection|
+        src_job = @nodes[connection['from']['node']]
         next unless src_job      # No data possible if the node has not been started
-        src_port = src_job.output(connection['src']['port'])
-
-        tgt_job = node_job(connection['tgt']['process'], force_start: true)
-
+        src_port = src_job.output(connection['from']['outport'])
+        next unless src_port.size > 0
+        tgt_job = ensure_started(connection['to']['node'])
         connections[src_port] ||= []
-        connections[src_port] << tgt_job.input(connection['tgt']['port'])
+        connections[src_port] << tgt_job.input(connection['to']['inport'])
       end
 
       # outport connections have to be merged with job connections in case
       # some data needs to go to both another job and a graph outport
-      if @graph['outports']
-        @graph['outports'].each_pair do |name, port|
-          job = @nodes[port['process']]
-          next unless job
-          out = job.output(port['port'])
-          connections[out] ||= []
-          connections[out] << output(name)
-        end
+      @graph['outports'].each_pair do |name, port|
+        job = @nodes[port['node']]
+        next unless job
+        out = job.output(port['outport'])
+        connections[out] ||= []
+        connections[out] << output(name)
       end
+
 
       # process all connections
 
-      if @graph['inports']
-        @graph['inports'].each_pair do |name, port|
-          job = node_job(port['process'], force_start: true)
-          input(name).connect_to job.input(port['port'])
+      @graph['inports'].each_pair do |name, port|
+        inport = input(name)
+        if inport.size > 0
+          job = ensure_started(port['node'])
+          inport.connect_to job.input(port['inport'])
         end
       end
 
@@ -90,55 +106,55 @@ module Workers
 
     private
 
-    # lims/ui and lims/indexer may also be updating the job, so we need to be careful to not overwrite
-    # data until we have upsert (elasticsearch 1.4).
-    # try update first and if that fails then try create
-    def es_update_or_create(job_id, doc)
-      Ginkgo.ES.update(index: 'jobs', type: 'job', id: job_id, ignore: 404, body: { doc: doc }) ||
-          Ginkgo.ES.create(index: 'jobs', type: 'job', id: job_id, body: doc)
-    end
-
-    # Returns the job associated with a graph node
+    # Returns and starts if necessary the job associated with a graph node
     # @param node [String] node ID from graph
-    # @param force_start [Boolean] If true, will always start a job if no job has been started
-    # @return [SideJob::Job, nil] job for the given node or nil if one hasn't been started
-    def node_job(node, force_start: false)
+    # @return [SideJob::Job] job for the given node
+    def ensure_started(node)
       return @nodes[node] if @nodes[node]
 
-      info = @graph['processes'][node]
+      info = @graph['nodes'][node]
       raise "Cannot find node #{node} in graph" unless info
 
-      queue = info['metadata']['queue']
-      klass = info['metadata']['class']
+      queue = info['queue']
+      klass = info['class']
       raise "Missing required queue or class metadata for node #{node}" if ! queue || ! klass
 
-      # we only start nodes that have initial data defined (can be empty) or that have received input data
-      init = (info['metadata']['inports'] || {}).values.any? {|spec| spec['data']} ||
-          (info['metadata']['outports'] || {}).values.any? {|spec| spec['data']}
-
-      return nil unless init || force_start
-
-      job = queue(queue, klass, name: node, args: info['metadata']['args'],
-                  inports: info['metadata']['inports'], outports: info['metadata']['outports'])
+      job = queue(queue, klass, name: node, args: info['args'],
+                  inports: info['inports'], outports: info['outports'])
       @nodes[node] = job
+      return job
+    end
 
+    # Process graph init block
+    # @param init [Array<Object>] Init data
+    def process_init(init)
+      return unless init
       SideJob::Port.log_group do
-        (info['metadata']['inports'] || {}).each_pair do |port, spec|
-          if spec['data']
-            port = job.input(port)
-            spec['data'].each { |x| port.write(x) }
+        init.each do |data|
+          if data['job']
+            raise "Job #{data['job']} cannot be adopted because node #{data['node']} has been started as job #{@nodes[data]['node'].id}" if @nodes[data['node']]
+            child = SideJob.find(data['job'])
+            raise "Job #{data['job']} does not exist" unless child
+            info = @graph['nodes'][data['node']]
+            if child.get(:queue) == info['queue'] && child.get(:class) == info['class'] && child.get(:args) == info['args']
+              adopt(child, data['node'])
+            else
+              raise "Job #{data['job']} cannot be adopted due to param mismatch with node #{data['node']}"
+            end
+          else
+            job = ensure_started(data['node'])
           end
-        end
 
-        (info['metadata']['outports'] || {}).each_pair do |port, spec|
-          if spec['data']
-            port = job.output(port)
-            spec['data'].each { |x| port.write(x) }
+          port = if data['inport']
+            job.input(data['inport'])
+          elsif data['outport']
+            job.output(data['outport'])
+          else
+            nil
           end
+          port.write(data['data']) if port && data['data']
         end
       end
-
-      job
     end
   end
 end
