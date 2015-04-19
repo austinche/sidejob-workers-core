@@ -28,12 +28,8 @@ module Workers
 
         if new_graph
           @graph = new_graph
-          init = @graph['init']
-          @graph.delete('init')
           set({graph: @graph})
-          process_init(init)
-          self.inports = @graph['inports'] || {}
-          self.outports = @graph['outports'] || {}
+          init_graph
         else
           @graph = get(:graph)
           suspend unless @graph
@@ -75,7 +71,6 @@ module Workers
         connections[out] ||= []
         connections[out] << output(name)
       end
-
 
       # process all connections
 
@@ -125,34 +120,44 @@ module Workers
       return job
     end
 
-    # Process graph init block
-    # @param init [Array<Object>] Init data
-    def process_init(init)
-      return unless init
+    def init_ports(job, data)
+      job.inports = data['inports']
+      job.outports = data['outports']
+    end
+
+    # Initialize graph
+    # Run once on each new graph
+    def init_graph
       SideJob::Port.log_group do
-        init.each do |data|
-          if data['job']
-            raise "Job #{data['job']} cannot be adopted because node #{data['node']} has been started as job #{@nodes[data]['node'].id}" if @nodes[data['node']]
-            child = SideJob.find(data['job'])
-            raise "Job #{data['job']} does not exist" unless child
-            info = @graph['nodes'][data['node']]
-            if child.get(:queue) == info['queue'] && child.get(:class) == info['class'] && child.get(:args) == info['args']
-              adopt(child, data['node'])
+        (@graph['nodes'] || {}).each_pair do |node, data|
+          job = @nodes[node]
+          init_ports(job, data) if job
+
+          if data['init'].is_a?(Integer)
+            raise "Job #{data['init']} cannot be adopted because node #{node} has been started as job #{job.id}" if job
+            job = SideJob.find(data['init'])
+            raise "Job #{data['init']} does not exist" unless job
+            if job.get(:queue) == data['queue'] && job.get(:class) == data['class'] && job.get(:args) == data['args']
+              adopt(job, node)
             else
-              raise "Job #{data['job']} cannot be adopted due to param mismatch with node #{data['node']}"
+              raise "Job #{data['init']} cannot be adopted due to param mismatch with node #{node}"
             end
-          else
-            job = ensure_started(data['node'])
+            init_ports(job, data)
+          elsif data['init']
+            job = ensure_started(node)
           end
 
-          port = if data['inport']
-            job.input(data['inport'])
-          elsif data['outport']
-            job.output(data['outport'])
-          else
-            nil
+          %i{in out}.each do |type|
+            (data["#{type}ports"] || {}).each_pair do |name, options|
+              if options['init']
+                job = ensure_started(node) if ! job
+                port = job.send("#{type}put", name)
+                options['init'].each do |data|
+                  port.write(data)
+                end
+              end
+            end
           end
-          port.write(data['data']) if port && data['data']
         end
       end
     end
