@@ -1,8 +1,6 @@
-source 'http://gems.ginkgobioworks.com'
 source 'https://rubygems.org'
 
-gem 'sidejob', '~>3.1.0'
-gem 'ginkgo-elasticsearch'
+gem 'sidejob', '~>4.0.0'
 
 gem 'pry'
 gem 'rspec'
