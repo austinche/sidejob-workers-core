@@ -18,6 +18,24 @@ describe Workers::Workflow do
     end
   end
 
+  class Workers::TestAdd
+    include SideJob::Worker
+    register(
+        inports: {
+            x: {},
+            y: {},
+        },
+        outports: {
+            out: {},
+        },
+    )
+    def perform
+      for_inputs(:x, :y) do |x, y|
+        output(:out).write x + y
+      end
+    end
+  end
+
   class Workers::TestDouble
     include SideJob::Worker
     register(
@@ -221,6 +239,18 @@ describe Workers::Workflow do
       expect(@job.children.size).to be(1)
       expect(@job.status).to eq 'completed'
       expect(@job.output(:total).read).to eq 10
+    end
+
+    it 'uses default values from inports' do
+      run_graph({nodes: {sum: {queue: 'core', class: 'Workers::TestAdd' }},
+                 inports: {x: {node: 'sum', inport: 'x', default: 5}, y: {node: 'sum', inport: 'y'}},
+                 outports: {total: {node: 'sum', outport: 'out'}},
+                })
+      @job.input(:y).write 7
+      SideJob::Worker.drain_queue
+      expect(@job.status).to eq 'completed'
+      expect(@job.children.size).to be(1)
+      expect(@job.output(:total).read).to eq 12
     end
 
     it 'updates inports and outports from a new graph' do

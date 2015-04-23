@@ -76,7 +76,7 @@ module Workers
 
       @graph['inports'].each_pair do |name, port|
         inport = input(name)
-        if inport.size > 0
+        if inport.size > 0 || inport.default?
           job = ensure_started(port['node'])
           inport.connect_to job.input(port['inport'])
         end
