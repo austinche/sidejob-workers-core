@@ -1,26 +1,36 @@
 require 'spec_helper'
 
 describe Workers::Wait do
-  it 'can wait for two inputs' do
-    @job = SideJob.queue('core', 'Workers::Wait', inports: {port1: {}, port2: {}}, outports: {port1: {}, port2: {}})
-    @job.input(:port1).write 'a'
-    @job.run_inline
-    expect(@job.status).to eq 'suspended'
-    expect(@job.output(:port1).data?).to be false
-    expect(@job.output(:port2).data?).to be false
-    @job.input(:port2).write 'b'
-    @job.run_inline
-    expect(@job.status).to eq 'completed'
-    expect(@job.output(:port1).read).to eq 'a'
-    expect(@job.output(:port2).read).to eq 'b'
+  before do
+    @job = SideJob.queue('core', 'Workers::Wait')
   end
 
-  it 'can be used as a trigger by using memory ports' do
-    @job = SideJob.queue('core', 'Workers::Wait', inports: {trigger: {}, data: {mode: :memory}}, outports: {data: {}})
-    @job.input(:data).write [1,2]
-    5.times { @job.input(:trigger).write true }
+  it 'completes on no input' do
     @job.run_inline
     expect(@job.status).to eq 'completed'
-    5.times { expect(@job.output(:data).read).to eq [1,2] }
+  end
+
+  it 'waits for trigger to send data' do
+    @job.input(:in).write 123
+    @job.run_inline
+    expect(@job.output(:out).size).to eq 0
+    expect(@job.status).to eq 'suspended'
+  end
+
+  it 'suspends until input' do
+    @job.input(:trigger).write 123
+    @job.run_inline
+    expect(@job.status).to eq 'suspended'
+  end
+
+  it 'sends data on each trigger' do
+    @job.input(:trigger).write nil
+    @job.input(:trigger).write false
+    @job.input(:in).write 123
+    @job.input(:in).write 456
+    @job.run_inline
+    expect(@job.status).to eq 'completed'
+    expect(@job.output(:out).read).to eq(123)
+    expect(@job.output(:out).read).to eq(456)
   end
 end

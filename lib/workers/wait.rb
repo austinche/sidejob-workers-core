@@ -2,24 +2,20 @@ module Workers
   class Wait
     include SideJob::Worker
     register(
-        description: 'Waits for data on input ports and sends all to the same named output ports',
+        description: 'Waits for a trigger before sending data from in to out',
         icon: 'step-forward',
         inports: {
-            '*' => { type: 'all', description: 'Input data' },
+            trigger: { type: 'all', description: 'Trigger' },
+            in: { type: 'all', description: 'Input data' },
         },
         outports: {
-            '*' => { type: 'all', description: 'Output data' },
+            out: { type: 'all', description: 'Output data' },
         },
     )
 
     def perform
-      inports_names = inports.map(&:name)
-      out = outports.each_with_object({}) {|port, hash| hash[port.name] = port}
-      for_inputs(*inports_names) do |*data|
-        data.each_with_index do |x, i|
-          port = inports_names[i]
-          out[port].write x if out[port]
-        end
+      for_inputs(:trigger, :in) do |trigger, input|
+        output(:out).write input
       end
     end
   end
