@@ -1,8 +1,8 @@
 require 'spec_helper'
 
-describe Workers::Entries do
+describe Workers::Each do
   before do
-    @job = SideJob.queue('core', 'Workers::Entries')
+    @job = SideJob.queue('core', 'Workers::Each')
   end
 
   it 'outputs array elements' do

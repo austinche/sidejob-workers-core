@@ -1,8 +1,8 @@
 module Workers
-  class Entries
+  class Each
     include SideJob::Worker
     register(
-        description: 'Outputs the individual entries from an array or object.',
+        description: 'Outputs each item from an array or object',
         icon: 'list',
         inports: {
             in: { type: 'all', description: 'Input object or array' },
