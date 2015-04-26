@@ -86,7 +86,7 @@ module Workers
         src_job = @nodes[source[:node]]
         next unless src_job      # No data possible if the node has not been started
         src_port = src_job.output(source[:port])
-        next unless src_port.size > 0
+        next unless src_port.data?
         target_ports = targets.map do |target|
           if target.is_a?(SideJob::Port)
             target

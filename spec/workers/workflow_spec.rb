@@ -354,5 +354,19 @@ describe Workers::Workflow do
       expect(@job.output(:doubled).read).to eq 20
       expect(@job.output(:quadrupled).read).to eq 40
     end
+
+    it 'connects port defaults' do
+      run_graph({nodes: {sum: {queue: 'core', class: 'Workers::TestSum', init: true, outports: {out: {default: 10}}},
+                         add: {queue: 'core', class: 'Workers::TestAdd' }},
+                 edges: [{from: {node: 'sum', outport: 'out'}, to: {node: 'add', inport: 'x'}}],
+                 inports: {y: {node: 'add', inport: 'y'}},
+                 outports: {result: {node: 'add', outport: 'out'}},
+                })
+      @job.input(:y).write 15
+      SideJob::Worker.drain_queue
+      expect(@job.children.size).to be(2)
+      expect(@job.output(:result).read).to eq 25
+      expect(@job.status).to eq 'completed'
+    end
   end
 end
