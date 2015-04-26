@@ -51,25 +51,25 @@ module Workers
       end
       @nodes = children if reload
 
-      connections = {} # SideJob::Port (output port) -> Array<SideJob::Port>
+      # To prevent race conditions, we delay looking up ports until connection processing below.
+      # Otherwise, we can get into the situation where port data arrives while processing this workflow and end up
+      # only sending the data to some of its downstream targets.
+      # We use {node: ..., port: ...} to represent a port for both source and targets.
+      # We use SideJob::Port for our own target ports.
+      connections = {} # source port -> Array<target ports>
       @graph['edges'].each do |connection|
-        src_job = @nodes[connection['from']['node']]
-        next unless src_job      # No data possible if the node has not been started
-        src_port = src_job.output(connection['from']['outport'])
-        next unless src_port.size > 0
-        tgt_job = ensure_started(connection['to']['node'])
-        connections[src_port] ||= []
-        connections[src_port] << tgt_job.input(connection['to']['inport'])
+        src = {node: connection['from']['node'], port: connection['from']['outport']}
+        tgt = {node: connection['to']['node'], port: connection['to']['inport']}
+        connections[src] ||= []
+        connections[src] << tgt
       end
 
       # outport connections have to be merged with job connections in case
       # some data needs to go to both another job and a graph outport
       @graph['outports'].each_pair do |name, port|
-        job = @nodes[port['node']]
-        next unless job
-        out = job.output(port['outport'])
-        connections[out] ||= []
-        connections[out] << output(name)
+        src = {node: port['node'], port: port['outport']}
+        connections[src] ||= []
+        connections[src] << output(name)
       end
 
       # process all connections
@@ -82,8 +82,20 @@ module Workers
         end
       end
 
-      connections.each_pair do |port, targets|
-        port.connect_to targets
+      connections.each_pair do |source, targets|
+        src_job = @nodes[source[:node]]
+        next unless src_job      # No data possible if the node has not been started
+        src_port = src_job.output(source[:port])
+        next unless src_port.size > 0
+        target_ports = targets.map do |target|
+          if target.is_a?(SideJob::Port)
+            target
+          else
+            tgt_job = ensure_started(target[:node])
+            tgt_job.input(target[:port])
+          end
+        end
+        src_port.connect_to target_ports
       end
 
       # we complete if all jobs are completed
