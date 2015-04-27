@@ -311,13 +311,12 @@ describe Workers::Workflow do
     end
 
     it 'starts child job with port options' do
-      run_graph({nodes: {abc: {queue: 'core', class: 'Workers::Workflow', args: ['empty'], init: true, inports: {default: {default: 123}, in: {mode: :memory}}}}})
+      run_graph({nodes: {abc: {queue: 'core', class: 'Workers::Workflow', args: ['empty'], init: true, inports: {myport: {default: 123}}}}})
       @job.run
       expect(@job.status).to eq 'queued'
       SideJob::Worker.drain_queue
       expect(@job.status).to eq 'completed'
-      expect(@job.child(:abc).input(:in).options).to eq({mode: :memory})
-      expect(@job.child(:abc).input(:default).options).to eq({mode: :queue, default: 123})
+      expect(@job.child(:abc).input(:myport).default).to eq(123)
     end
   end
 

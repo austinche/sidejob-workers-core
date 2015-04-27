@@ -26,9 +26,9 @@ describe Workers::Merge do
     expect(@job.output(:out).read).to eq({'key1' => 'val3', 'key2' => 'val4', 'common' => 'y2'})
   end
 
-  it 'works with memory ports' do
-    @job = SideJob.queue('core', 'Workers::Merge', inports: {in1: {mode: :memory}, in2: {}})
-    [{key1: 'val0'}, {key1: 'val1', common: 'x'}, {key1: 'val3', common: 'x'}].each {|x| @job.input(:in1).write x}
+  it 'works with port defaults' do
+    @job = SideJob.queue('core', 'Workers::Merge')
+    @job.input(:in1).default = {key1: 'val3', common: 'x'}
     [{key2: 'val2', common: 'y'}, {key2: 'val4', common: 'y2'}].each {|x| @job.input(:in2).write x}
     @job.run_inline
     expect(@job.status).to eq 'completed'

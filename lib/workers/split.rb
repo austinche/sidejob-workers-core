@@ -5,7 +5,7 @@ module Workers
         description: 'Splits a string into an array.',
         icon: 'unlink',
         inports: {
-            sep: { mode: :memory, default: ',', type: 'string', description: 'Separator' },
+            sep: { type: 'string', description: 'Separator', default: ',' },
             in: { type: 'string', description: 'Input string' },
         },
         outports: {

@@ -23,7 +23,7 @@ describe Workers::Connect do
   end
 
   it 'passes on default value' do
-    @job.input(:in).options = { default: [1,2,3] }
+    @job.input(:in).default = [1,2,3]
     @job.run_inline
     expect(@job.output(:out).default).to eq [1,2,3]
     expect(@job.status).to eq 'completed'

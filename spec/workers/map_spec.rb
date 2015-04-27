@@ -42,9 +42,8 @@ describe Workers::Map do
   end
 
   it 'can map with a default value port' do
-    @job.input(:each).options = {mode: :memory}
     @job.input(:in).write((1..3).to_a)
-    @job.input(:each).write('xyz')
+    @job.input(:each).default = 'xyz'
     @job.run_inline
     expect(@job.status).to eq 'completed'
     expect(@job.output(:out).read).to eq ['xyz', 'xyz', 'xyz']

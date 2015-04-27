@@ -9,7 +9,7 @@ describe Workers::Filter do
     data = [{'abc' => 123, 'xyz' => 'foo'}, [1, 2, 3, "abc"], 123, 'string', true, false, nil]
     data.each {|x| @job.input(:in).write x}
     expect(@job.input(:in).size).to eq data.length
-    @job.input(:filter).write '.'
+    @job.input(:filter).default = '.'
     @job.run_inline
     data.each do |x|
       expect(@job.output(:out).read).to eq x

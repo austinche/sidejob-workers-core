@@ -5,7 +5,7 @@ module Workers
         description: 'Joins an array into a string.',
         icon: 'link',
         inports: {
-            sep: { mode: :memory, default: ',', type: 'string', description: 'Separator' },
+            sep: { type: 'string', description: 'Separator', default: ',' },
             in: { type: 'array', description: 'Input array' },
         },
         outports: {

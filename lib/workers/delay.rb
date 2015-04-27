@@ -5,7 +5,7 @@ module Workers
         description: 'Forwards all data on input port to output port after a delay',
         icon: 'clock-o',
         inports: {
-            delay: { mode: :memory, type: 'integer', description: 'Number of seconds to delay sending data' },
+            delay: { type: 'integer', description: 'Number of seconds to delay sending data' },
             in: { type: 'all', description: 'Input data' },
         },
         outports: {

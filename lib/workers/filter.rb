@@ -8,7 +8,7 @@ module Workers
         description: 'Runs a jq filter: http://stedolan.github.io/jq/',
         icon: 'filter',
         inports: {
-            filter: { mode: :memory, type: 'string', description: 'Filter in the jq language' },
+            filter: { type: 'string', description: 'Filter in the jq language' },
             in: { type: 'all', description: 'Input data' },
         },
         outports: {

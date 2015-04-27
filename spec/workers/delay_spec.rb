@@ -23,7 +23,7 @@ describe Workers::Delay do
   it 'forwards multiple packets in order' do
     now = Time.now
     allow(Time).to receive(:now) { now }
-    @job.input(:delay).write 10
+    @job.input(:delay).default = 10
     @job.input(:in).write 1
     @job.run_inline
     allow(Time).to receive(:now) { now + 5 }
@@ -44,7 +44,6 @@ describe Workers::Delay do
   end
 
   it 'correctly orders packets with different delays' do
-    @job = SideJob.queue('core', 'Workers::Delay', inports: { delay: { mode: :queue }, in: {}})
     now = Time.now
     allow(Time).to receive(:now) { now }
     [10, 5].each {|x| @job.input(:delay).write x}

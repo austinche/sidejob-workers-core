@@ -5,9 +5,9 @@ module Workers
         description: 'Calculates permutations or combinations on an array.',
         icon: 'th',
         inports: {
-            ordered: { mode: :memory, default: false, type: 'boolean', description: 'True for permutations, false for combinations' },
-            repeat: { mode: :memory, default: false, type: 'boolean', description: 'Allow repeats?' },
-            n: { mode: :memory, type: 'integer', description: 'Length' },
+            ordered: { type: 'boolean', description: 'True for permutations, false for combinations', default: false },
+            repeat: { type: 'boolean', description: 'Allow repeats?', default: false },
+            n: { type: 'integer', description: 'Length' },
             in: { type: 'array', description: 'Input array' },
         },
         outports: {
