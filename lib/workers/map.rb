@@ -23,6 +23,7 @@ module Workers
       loop do
         n = get(:n)
         if ! n
+          raise 'Cannot handle default on input port' if input(:in).default?
           return unless input(:in).data?
           source = input(:in).read
           raise 'Input must be an array or object' unless source.respond_to?(:each)

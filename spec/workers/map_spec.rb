@@ -22,6 +22,11 @@ describe Workers::Map do
     expect { @job.run_inline }.to raise_error
   end
 
+  it 'raises error if there is default value on in port' do
+    @job.input(:in).default = (0..4).to_a
+    expect { @job.run_inline }.to raise_error
+  end
+
   it 'suspends on partial mapped values' do
     @job.input(:in).write((0..4).to_a)
     @job.input(:each).write('a')
@@ -41,7 +46,7 @@ describe Workers::Map do
     expect(@job.status).to eq 'completed'
   end
 
-  it 'can map with a default value port' do
+  it 'can map with a default value each port' do
     @job.input(:in).write((1..3).to_a)
     @job.input(:each).default = 'xyz'
     @job.run_inline
