@@ -151,20 +151,9 @@ describe Workers::Workflow do
                  outports: {doubled: {node: 'x2', outport: 'out'}}})
       expect(@job.children.size).to be(1)
       x2 = @job.child('x2')
-      expect(x2.get(:queue)).to eq 'core'
-      expect(x2.get(:class)).to eq 'Workers::TestDouble'
+      expect(x2.info[:queue]).to eq 'core'
+      expect(x2.info[:class]).to eq 'Workers::TestDouble'
       expect(@job.status).to eq 'completed'
-      expect(SideJob.logs).to eq [{'job' => @job.id, 'timestamp' => SideJob.timestamp,
-                                   'read' => [], 'write' => [{'job' => x2.id, 'inport' => 'in', 'data' => [4]}]},
-                                  {'job' => x2.id, 'timestamp' => SideJob.timestamp,
-                                   'read' => [{'job' => x2.id, 'inport' => 'in', 'data' => [4]}],
-                                   'write' => [{'job' => x2.id, 'outport' => 'out', 'data' => [8]}],
-                                  },
-                                  {'job' => @job.id, 'timestamp' => SideJob.timestamp,
-                                   'read' => [{'job' => x2.id, 'outport' => 'out', 'data' => [8]}],
-                                   'write' => [{'job' => @job.id, 'outport' => 'doubled', 'data' => [8]}],
-                                  },
-                                  ]
       expect(@job.output(:doubled).read).to eq 8
     end
 
@@ -194,9 +183,9 @@ describe Workers::Workflow do
       expect(@job.status).to eq 'completed'
       expect(@job.children.size).to be(1)
       child = @job.child('abc')
-      expect(child.get(:queue)).to eq 'core'
-      expect(child.get(:class)).to eq 'Workers::Workflow'
-      expect(child.get(:args)).to eq ['empty']
+      expect(child.info[:queue]).to eq 'core'
+      expect(child.info[:class]).to eq 'Workers::Workflow'
+      expect(child.info[:args]).to eq ['empty']
     end
 
     it 'can adopt a child job instead of starting a new one' do
@@ -296,9 +285,9 @@ describe Workers::Workflow do
       expect(@job.status).to eq 'completed'
       expect(@job.children.size).to be(1)
       child = @job.child('abc')
-      expect(child.get(:queue)).to eq 'core'
-      expect(child.get(:class)).to eq 'Workers::Workflow'
-      expect(child.get(:args)).to eq ['empty']
+      expect(child.info[:queue]).to eq 'core'
+      expect(child.info[:class]).to eq 'Workers::Workflow'
+      expect(child.info[:args]).to eq ['empty']
     end
 
     it 'only starts a child job once' do

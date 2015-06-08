@@ -15,7 +15,7 @@ module Workers
 
     def perform
       for_inputs(:in, :level) do |input, level|
-        if level
+        if level.respond_to?(:to_int)
           output(:out).write input.flatten(level)
         else
           output(:out).write input.flatten

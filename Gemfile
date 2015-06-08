@@ -1,6 +1,6 @@
 source 'https://rubygems.org'
 
-gem 'sidejob', '~>4.0.0'
+gem 'sidejob', '~>4.1.0'
 
 gem 'pry'
 gem 'rspec'

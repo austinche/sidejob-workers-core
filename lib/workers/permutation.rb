@@ -17,14 +17,14 @@ module Workers
 
     def perform
       for_inputs(:ordered, :repeat, :n, :in) do |ordered, repeat, n, input|
-        if ordered
-          if repeat
+        if ordered == true
+          if repeat == true
             output(:out).write input.repeated_permutation(n).to_a
           else
             output(:out).write input.permutation(n).to_a
           end
         else
-          if repeat
+          if repeat == true
             output(:out).write input.repeated_combination(n).to_a
           else
             output(:out).write input.combination(n).to_a

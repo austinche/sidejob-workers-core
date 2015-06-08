@@ -20,7 +20,7 @@ module Workers
       @nodes = children # graph node id -> SideJob::Job
 
       # group so graph read and init data are together
-      SideJob::Port.log_group do
+      SideJob::Port.group do
         new_graph = input('__graph').entries.last
         if workflow_id && ! new_graph && ! get(:graph)
           new_graph = JSON.parse(SideJob.redis.hget('workflows', workflow_id)) rescue nil
@@ -140,7 +140,7 @@ module Workers
     # Initialize graph
     # Run once on each new graph
     def init_graph
-      SideJob::Port.log_group do
+      SideJob::Port.group do
         (@graph['nodes'] || {}).each_pair do |node, data|
           job = @nodes[node]
           init_ports(job, data) if job
@@ -149,7 +149,8 @@ module Workers
             raise "Job #{data['init']} cannot be adopted because node #{node} has been started as job #{job.id}" if job
             job = SideJob.find(data['init'])
             raise "Job #{data['init']} does not exist" unless job
-            if job.get(:queue) == data['queue'] && job.get(:class) == data['class'] && job.get(:args) == data['args']
+            info = job.info
+            if info[:queue] == data['queue'] && info[:class] == data['class'] && info[:args] == data['args']
               adopt(job, node)
             else
               raise "Job #{data['init']} cannot be adopted due to param mismatch with node #{node}"
